@@ -24,3 +24,5 @@ coverage/
 *.log
 npm-debug.log*
 yarn-error.log*
+
+.last_summary

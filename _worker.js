@@ -1,7 +1,7 @@
 // Single-file Cloudflare Worker (Pages-compatible) serving UI and API
 
 // Minimal HTML UI
-const INDEX_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>天气图像生成器</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px} .card{background:#fff;border-radius:16px;padding:24px;max-width:680px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.15)} h1{margin:0 0 16px;color:#333} .row{display:flex;gap:8px;margin:12px 0} input{flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:16px} button{padding:12px 18px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:10px;cursor:pointer} .hint{color:#666;margin:8px 0 16px;font-size:14px} .err{display:none;margin-top:12px;background:#fee;color:#c33;padding:10px;border-radius:8px} .err.active{display:block} .res{display:none;margin-top:16px} .res.active{display:block} .meta{color:#666;margin:6px 0} img{max-width:100%;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.12)} /* loading overlay */ .overlay{position:fixed;inset:0;background:rgba(255,255,255,.75);backdrop-filter:saturate(120%) blur(2px);display:none;align-items:center;justify-content:center;z-index:9999} .overlay.active{display:flex} .spinner{width:48px;height:48px;border-radius:50%;border:4px solid #dbe2ff;border-top-color:#667eea;animation:spin 1s linear infinite;box-shadow:0 2px 8px rgba(0,0,0,.12)} @keyframes spin{to{transform:rotate(360deg)}} </style></head><body><div class="card"><h1>🌤️ 天气图像生成器</h1><div class="hint">输入城市（如：上海/北京），将生成包含地标的天气图像</div><div class="row"><input id="city" placeholder="输入城市名称"/><button id="go">生成</button></div><div class="err" id="err">生成失败，请重试</div><div class="res" id="res"><div class="meta" id="cityName"></div><div class="meta" id="weather"></div><img id="img" alt="天气图像"/></div></div><div class="overlay" id="loading"><div class="spinner"></div></div><script>const cityInput=document.getElementById('city');const goBtn=document.getElementById('go');const err=document.getElementById('err');const res=document.getElementById('res');const cityName=document.getElementById('cityName');const weather=document.getElementById('weather');const img=document.getElementById('img');const loading=document.getElementById('loading');async function gen(){err.classList.remove('active');res.classList.remove('active');goBtn.disabled=true;loading.classList.add('active');try{const city=cityInput.value.trim();const url='/api/weather'+(city?'?city='+encodeURIComponent(city):'');const r=await fetch(url);const data=await r.json();if(!r.ok||!data||!data.success)throw new Error(data&&data.error||'请求失败');cityName.textContent='城市：'+(data.city||'未知');weather.textContent='天气：'+(data.weatherLine||'');img.src=data.image;res.classList.add('active')}catch(e){console.error(e);err.textContent='生成失败：'+e.message;err.classList.add('active')}finally{loading.classList.remove('active');goBtn.disabled=false}}goBtn.addEventListener('click',gen);</script></body></html>`;
+const INDEX_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>天气图像生成器</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px} .card{background:#fff;border-radius:16px;padding:24px;max-width:680px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.15)} h1{margin:0 0 16px;color:#333} .row{display:flex;gap:8px;margin:12px 0} input{flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:16px} button{padding:12px 18px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:10px;cursor:pointer} .hint{color:#666;margin:8px 0 16px;font-size:14px} .err{display:none;margin-top:12px;background:#fee;color:#c33;padding:10px;border-radius:8px} .err.active{display:block} .res{display:none;margin-top:16px} .res.active{display:block} .meta{color:#666;margin:6px 0} img{max-width:100%;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.12)} /* loading overlay */ .overlay{position:fixed;inset:0;background:rgba(255,255,255,.75);backdrop-filter:saturate(120%) blur(2px);display:none;align-items:center;justify-content:center;z-index:9999} .overlay.active{display:flex} .spinner{width:48px;height:48px;border-radius:50%;border:4px solid #dbe2ff;border-top-color:#667eea;animation:spin 1s linear infinite;box-shadow:0 2px 8px rgba(0,0,0,.12)} @keyframes spin{to{transform:rotate(360deg)}} </style></head><body><div class="card"><h1>🌤️ 天气图像生成器</h1><div class="hint">输入城市（如：上海/北京），将生成包含地标的天气图像</div><div class="row"><input id="token" placeholder="输入访问口令（必填）" type="password" autocomplete="off"/></div><div class="row"><input id="city" placeholder="输入城市名称"/><button id="go">生成</button></div><div class="err" id="err">生成失败，请重试</div><div class="res" id="res"><div class="meta" id="cityName"></div><div class="meta" id="weather"></div><img id="img" alt="天气图像"/></div></div><div class="overlay" id="loading"><div class="spinner"></div></div><script>const tokenInput=document.getElementById('token');const cityInput=document.getElementById('city');const goBtn=document.getElementById('go');const err=document.getElementById('err');const res=document.getElementById('res');const cityName=document.getElementById('cityName');const weather=document.getElementById('weather');const img=document.getElementById('img');const loading=document.getElementById('loading'); /* 不持久化口令：不读取/不保存 */ async function gen(){err.classList.remove('active');res.classList.remove('active');goBtn.disabled=true;loading.classList.add('active');try{const token=(tokenInput.value||'').trim();if(!token){throw new Error('需要访问口令');}const city=cityInput.value.trim();const url='/api/weather'+(city?'?city='+encodeURIComponent(city):'');const r=await fetch(url,{ headers:{ 'X-Access-Token': token }});const data=await r.json();if(r.status===401) throw new Error('口令无效或未提供');if(r.status===429) throw new Error('Rate limit exceeded');if(!r.ok||!data||!data.success)throw new Error(data&&data.error||'请求失败');cityName.textContent='城市：'+(data.city||'未知');weather.textContent='天气：'+(data.weatherLine||'');img.src=data.image;res.classList.add('active')}catch(e){console.error(e);err.textContent='生成失败：'+e.message;err.classList.add('active')}finally{loading.classList.remove('active');goBtn.disabled=false}}goBtn.addEventListener('click',gen);</script></body></html>`;
 
 // 轻量化：带超时与指数退避的 fetchWithRetry，提升弱网/瞬断鲁棒性
 async function fetchWithRetry(url, options={}, retries=2, timeoutMs=6000){
@@ -24,6 +24,51 @@ async function fetchWithRetry(url, options={}, retries=2, timeoutMs=6000){
   throw lastErr || new Error('network_error');
 }
 
+// 安全：时序恒定比较，避免基于长度/短路的明显时序差异
+function timingSafeEqual(a,b){
+  if(typeof a!== 'string' || typeof b!== 'string') return false;
+  const len = Math.max(a.length, b.length);
+  let out = 0;
+  for(let i=0;i<len;i++){
+    const ca = a.charCodeAt(i) || 0;
+    const cb = b.charCodeAt(i) || 0;
+    out |= (ca ^ cb);
+  }
+  return a.length === b.length && out === 0;
+}
+
+// 计算 SHA-256 十六进制（用于哈希口令比对）
+async function sha256Hex(str){
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(str));
+  const arr = Array.from(new Uint8Array(buf));
+  return arr.map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// 一次性初始化：从 env 读取 TOKEN_HASH/TOKEN_SHA256 或 TOKEN 并转为哈希；若均不存在，则置空并拒绝所有请求
+let AUTH_READY = false;
+let EXPECTED_TOKEN_HASH = null;
+async function ensureAuth(env){
+  if (AUTH_READY) return;
+  const hashed = (env.TOKEN_HASH || env.TOKEN_SHA256 || '').trim();
+  if (hashed) {
+    EXPECTED_TOKEN_HASH = hashed.toLowerCase();
+  } else if (env.TOKEN) {
+    EXPECTED_TOKEN_HASH = (await sha256Hex(String(env.TOKEN))).toLowerCase();
+  } else {
+    EXPECTED_TOKEN_HASH = null; // 未配置 -> 拒绝所有请求
+  }
+  AUTH_READY = true;
+}
+
+// 基于请求头提取客户端 IP（Cloudflare/本地）
+function getClientIp(request){
+  const fwd = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '';
+  return (fwd.split(',')[0]||'').trim() || 'unknown';
+}
+
+// 简单内存速率限制存储（每实例）
+const __rateStore = new Map();
 function pickWeatherLine(text){ if(!text) return null; const lines=text.split('\n').map(l=>l.trim()).filter(Boolean); for(const l of lines){ if(/°C|℃/.test(l)) return l } for(const l of lines){ if(/\b\d+\s*[~～\-]\s*\d+\s*°?C\b/i.test(l)) return l } return lines[0]||null }
 
 async function callImageModel(prompt, apiKey, modelName){
@@ -40,11 +85,15 @@ async function callImageModel(prompt, apiKey, modelName){
     },
     body: JSON.stringify(body)
   });
+
   if(!r.ok){
     const errText = await r.text().catch(()=> '');
     throw new Error(`Image API ${r.status} ${errText}`);
   }
   const j = await r.json();
+
+  console.log('callImageModel:', j?.usageMetadata?.totalTokenCount);
+
   const parts = j?.candidates?.[0]?.content?.parts || [];
   const imgPart = parts.find(p=>p.inlineData && p.inlineData.data);
   const data = imgPart?.inlineData?.data;
@@ -195,11 +244,60 @@ function svgImageStrict(city, enHeader){
 
 export default {
   async fetch(request, env){
+    // 初始化并强制要求 TOKEN 配置；若未设置则拒绝所有请求（含首页）
+    await ensureAuth(env);
+    if(!EXPECTED_TOKEN_HASH){
+      return new Response('Unauthorized: TOKEN not configured', { status: 401, headers:{ 'content-type':'text/plain; charset=utf-8' }});
+    }
+
     const url = new URL(request.url);
     if(url.pathname === '/'){
       return new Response(INDEX_HTML,{ headers:{ 'content-type':'text/html; charset=utf-8' } });
     }
     if(url.pathname === '/api/weather'){
+      // 口令校验（仅哈希比对）
+      const providedHeader = request.headers.get('x-access-token') || (request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
+      if(!providedHeader){
+        return new Response(JSON.stringify({success:false,error:'Unauthorized'}),{ status:401, headers:{'content-type':'application/json'} });
+      }
+      const digestCalc = (await sha256Hex(providedHeader)).toLowerCase();
+      if(!timingSafeEqual(digestCalc, EXPECTED_TOKEN_HASH)){
+        return new Response(JSON.stringify({success:false,error:'Unauthorized'}),{ status:401, headers:{'content-type':'application/json'} });
+      }
+      // 简单速率限制（每 IP），默认 10 次/60 秒；可用 env.RATE_LIMIT_MAX / env.RATE_LIMIT_WINDOW_MS 覆盖
+      const windowMs = parseInt(env.RATE_LIMIT_WINDOW_MS || '60000', 10);
+      const maxReq = parseInt(env.RATE_LIMIT_MAX || '10', 10);
+      const ip = getClientIp(request);
+      const now = Date.now();
+      let ent = __rateStore.get(ip);
+      if(!ent || now > ent.resetAt){
+        ent = { count: 0, resetAt: now + windowMs };
+        __rateStore.set(ip, ent);
+      }
+      if(ent.count >= maxReq){
+        const retryAfter = Math.max(1, Math.ceil((ent.resetAt - now)/1000));
+        return new Response(JSON.stringify({success:false,error:'Rate limit exceeded'}), { status:429, headers:{'content-type':'application/json','retry-after': String(retryAfter)} });
+      }
+      ent.count++;
+
+      // 访问控制：支持哈希口令（优先 TOKEN_HASH/TOKEN_SHA256），否则回退明文 TOKEN
+      const provided = request.headers.get('x-access-token') || (request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
+      const needAuth = Boolean(env.TOKEN || env.TOKEN_HASH || env.TOKEN_SHA256);
+      if(needAuth){
+        let ok = false;
+        if(env.TOKEN_HASH || env.TOKEN_SHA256){
+          if(provided){
+            const digest = await sha256Hex(provided);
+            ok = timingSafeEqual(digest, (env.TOKEN_HASH || env.TOKEN_SHA256));
+          }
+        }else if(env.TOKEN){
+          ok = Boolean(provided) && timingSafeEqual(provided, env.TOKEN);
+        }
+        if(!ok){
+          return new Response(JSON.stringify({success:false,error:'Unauthorized'}),{ status:401, headers:{'content-type':'application/json'} });
+        }
+      }
+
       try{
         const city = (url.searchParams.get('city')||'上海').trim();
         const apiKey = env.GEMINI_API_KEY;
@@ -224,7 +322,11 @@ export default {
             const body = { contents: [{ role: 'user', parts: [{ text: prompt }]}], tools: [{ "google_search": {} }] };
             const r = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)});
             if(!r.ok) throw new Error('Text API');
+
             const j = await r.json();
+
+            console.log('callTextModel: ', j?.usageMetadata?.totalTokenCount);
+
             const parts = j?.candidates?.[0]?.content?.parts || [];
             summary = parts.map(p=>p.text||'').join('').trim();
             if(!summary) throw new Error('空响应');
@@ -269,6 +371,6 @@ export default {
         return new Response(JSON.stringify({success:false,error:e.message||'处理失败'}),{ status:500, headers:{'content-type':'application/json'} });
       }
     }
-    return new Response('Not Found',{ status:404 });
+    return new Response('Not Found', { status: 404 });
   }
 };
