@@ -3,3 +3,24 @@ weather_images
 .dev.vars
 
 node_modules
+
+# local temp
+temp
+
+# Cloudflare Wrangler local cache/state
+.wrangler/
+
+# OS/editor junk
+.DS_Store
+.vscode/
+.idea/
+
+# build artifacts
+/dist/
+/build/
+coverage/
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
