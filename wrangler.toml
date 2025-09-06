@@ -1,0 +1,16 @@
+name = "weather-image-gen"
+compatibility_date = "2024-09-05"
+
+[build]
+command = "npm run build"
+
+[env.production]
+name = "weather-image-gen"
+
+[[env.production.vars]]
+IPSTACK_API_KEY = ""
+GEMINI_API_KEY = ""
+
+[vars]
+IPSTACK_API_KEY = ""
+GEMINI_API_KEY = ""

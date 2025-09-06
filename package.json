@@ -1,0 +1,19 @@
+{
+  "name": "weather-image-gen",
+  "version": "1.0.0",
+  "description": "Cloudflare Pages weather image generator",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler pages dev public --binding IPSTACK_API_KEY=$IPSTACK_API_KEY --binding GEMINI_API_KEY=$GEMINI_API_KEY",
+    "build": "echo 'No build step needed for static site'",
+    "deploy": "wrangler pages deploy public --project-name=weather-image-gen"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "@google/genai": "^0.5.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  },
+  "type": "module"
+}
