@@ -7,7 +7,8 @@
     "dev": "dotenv -e .env -- wrangler pages dev . --binding IPSTACK_API_KEY=$IPSTACK_API_KEY --binding GEMINI_API_KEY=$GEMINI_API_KEY",
     "dev:worker": "dotenv -e .env -- wrangler dev --local --binding IPSTACK_API_KEY=$IPSTACK_API_KEY --binding GEMINI_API_KEY=$GEMINI_API_KEY",
     "build": "echo 'No build step needed for static site'",
-    "deploy": "wrangler pages deploy . --project-name=weather-image-gen"
+    "deploy": "wrangler pages deploy . --project-name=weather-image-gen",
+    "test:cities": "node scripts/city-tester.mjs"
   },
   "dependencies": {
     "@google/genai": "^0.5.0",

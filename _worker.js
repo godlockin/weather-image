@@ -9,18 +9,18 @@ const CONFIG = {
     SELLER_ACCOUNT_ID: 'f08c47fec0942fa0'
   },
   CACHE: {
-    WEATHER_TTL: 5 * 60 * 1000, // 5 minutes
+    WEATHER_TTL: 60 * 60 * 1000, // 60 minutes
     LANDMARK_TTL: 24 * 60 * 60 * 1000, // 24 hours
     MAX_SIZE: 100
   },
   NETWORK: {
-    RETRIES: 2,
-    TIMEOUT: 6000,
-    BACKOFF_BASE: 250
+    RETRIES: 3,
+    TIMEOUT: 12000,
+    BACKOFF_BASE: 400
   },
   RATE_LIMIT: {
-    WINDOW_MS: 60000,
-    MAX_REQUESTS: 10,
+    WINDOW_MS: 1000, // 1 second window
+    MAX_REQUESTS: 5, // 5 req/s per IP
     CLEANUP_INTERVAL: 5 * 60 * 1000 // 5 minutes
   },
   IMAGE: {
@@ -247,39 +247,34 @@ async function generateImageFromLLM(prompt, apiKey, modelName = 'gemini-1.5-flas
  */
 async function getRealtimeWeather(city) {
   try {
-    // Step 1: Get geocoding data
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh&format=json`;
-    const geoResponse = await fetchWithRetry(geoUrl);
-    if (!geoResponse.ok) throw new Error('geo');
-    
-    const geoData = await geoResponse.json();
-    const location = geoData?.results?.[0];
+    // Smart geocoding to better support Chinese municipalities (e.g., 重庆、天津)
+    const location = await geocodeCitySmart(city);
     if (!location) return null;
-    
+
     const { latitude, longitude, name } = location;
-    
+
     // Step 2: Get weather data in parallel with other requests if needed
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`;
     const weatherResponse = await fetchWithRetry(weatherUrl);
     if (!weatherResponse.ok) throw new Error('wx');
-    
+
     const weatherData = await weatherResponse.json();
-    
+
     // Process weather data
     const currentTemp = weatherData?.current?.temperature_2m;
     const weatherCode = weatherData?.current?.weather_code;
     const maxTemp = Array.isArray(weatherData?.daily?.temperature_2m_max) ? weatherData.daily.temperature_2m_max[0] : undefined;
     const minTemp = Array.isArray(weatherData?.daily?.temperature_2m_min) ? weatherData.daily.temperature_2m_min[0] : undefined;
-    
+
     // Generate text descriptions
     const zhWeather = weatherCodeText(weatherCode);
     const zhLine = (typeof currentTemp === 'number' && zhWeather) 
       ? `${name || city} ${zhWeather}，${Math.round(currentTemp)}°C` 
       : null;
-    
+
     const enWeather = weatherCodeTextEn(weatherCode);
     const icon = weatherCodeIcon(weatherCode);
-    
+
     // Build English header
     let enHeader;
     if (typeof maxTemp === 'number' && typeof minTemp === 'number') {
@@ -289,7 +284,7 @@ async function getRealtimeWeather(city) {
     } else {
       enHeader = `${enWeather}, ${icon}`;
     }
-    
+
     return { 
       zhLine, 
       enHeader, 
@@ -299,7 +294,7 @@ async function getRealtimeWeather(city) {
       tMax: maxTemp, 
       tMin: minTemp 
     };
-    
+
   } catch (error) { 
     console.error('getRealtimeWeather failed:', city, error);
     return null;
@@ -856,6 +851,112 @@ async function fetchWithRetry(url, options = {}, retries = CONFIG.NETWORK.RETRIE
 function getClientIp(request){
   return (request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
 }
+
+// 新增：更稳健的地理编码函数，支持中文直辖市与多候选筛选
+function isChinese(str){
+  return /[\u4e00-\u9fa5]/.test(str);
+}
+
+function buildGeoQueryCandidates(city){
+  const c = (city || '').trim();
+  const candidates = new Set();
+  if (!c) return [];
+
+  // 统一移除常见行政后缀（仅作为额外候选，不替换原词）
+  const stripAdminSuffix = (s) => s.replace(/(市|区|县|州|盟|旗|自治州|自治区|地区|特别行政区)$/u, '');
+  const cNoSuffix = stripAdminSuffix(c);
+
+  // 基础候选
+  candidates.add(c);
+  // 添加常见“市”变体，有助于如“湖州”→“湖州市”的检索
+  if (!/市$/u.test(c)) candidates.add(c + '市');
+
+  // 无后缀变体
+  if (cNoSuffix && cNoSuffix !== c) candidates.add(cNoSuffix);
+
+  // 常见中文-英文映射兜底（避免外部依赖）
+  const map = {
+    '重庆': 'Chongqing', '重庆市': 'Chongqing',
+    '天津': 'Tianjin',   '天津市': 'Tianjin',
+    '北京': 'Beijing',   '北京市': 'Beijing',
+    '上海': 'Shanghai',  '上海市': 'Shanghai',
+    '广州': 'Guangzhou', '广州市': 'Guangzhou',
+    '深圳': 'Shenzhen',  '深圳市': 'Shenzhen',
+    '西安': "Xi'an",    '西安市': "Xi'an",
+    // 重点补充：难命中的县级与变体
+    '墨脱': '墨脱县', '墨脱县': '墨脱县',
+    // 湖州补充：部分地理编码接口对“湖州市”命中更稳定
+    '湖州': 'Huzhou', '湖州市': 'Huzhou',
+    // 英文变体兜底（常见拼写）
+    'Motuo': 'Motuo', 'Medog': 'Medog'
+  };
+  if (map[c]) candidates.add(map[c]);
+  if (map[cNoSuffix]) candidates.add(map[cNoSuffix]);
+
+  // 限制候选总量，避免过多请求（保留插入顺序）
+  const arr = Array.from(candidates).filter(Boolean);
+  return arr.slice(0, 10);
+}
+
+async function geocodeCitySmart(city){
+  const baseQueries = buildGeoQueryCandidates(city);
+  const preferCN = isChinese(city);
+
+  // 定义一个查询函数（可切换语言与附加关键词）
+  const search = async (q, lang = 'zh') => {
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=10&language=${lang}&format=json`;
+    const r = await fetchWithRetry(geoUrl);
+    if (!r.ok) return [];
+    const j = await r.json();
+    return Array.isArray(j?.results) ? j.results : [];
+  };
+
+  // 第一轮：原始候选（中文优先），每个候选先 zh
+  for (const q of baseQueries) {
+    const arr = await search(q, 'zh');
+    const best = pickBestLocation(city, arr, preferCN);
+    if (best) return best;
+  }
+
+  // 第二轮：中文候选 + “ 中国” 限定（帮助 disambiguation）
+  if (preferCN) {
+    for (const q of baseQueries) {
+      const arr = await search(`${q} 中国`, 'zh');
+      const best = pickBestLocation(city, arr, true);
+      if (best) return best;
+    }
+  }
+
+  // 第三轮：英文检索（可能部分城市中文名称不可用）
+  for (const q of baseQueries) {
+    const arr = await search(q, 'en');
+    const best = pickBestLocation(city, arr, preferCN);
+    if (best) return best;
+  }
+  
+  return null;
+}
+
+function pickBestLocation(originalCity, results, preferCN){
+  if (!results || results.length === 0) return null;
+  let arr = results.slice();
+
+  // 优先精确名称匹配（含“市”变体）
+  const exactNames = new Set([originalCity, originalCity.replace(/[市]$/u,''), originalCity + '市']);
+  const exact = arr.find(x => exactNames.has(String(x.name||'')));
+  if (exact) return exact;
+
+  // 优先中国境内
+  if (preferCN) {
+    const cnList = arr.filter(x => (x.country_code||'').toUpperCase() === 'CN');
+    if (cnList.length) arr = cnList;
+  }
+
+  // 按人口倒序（大城市优先，如直辖市）
+  arr.sort((a,b)=> (b.population||0) - (a.population||0));
+  return arr[0] || null;
+}
+
 function weatherCodeText(code){
   const m={0:'晴朗',1:'大致晴朗',2:'局部多云',3:'多云',45:'有雾',48:'沉积雾',51:'小毛毛雨',53:'中毛毛雨',55:'大毛毛雨',56:'小冻毛毛雨',57:'大冻毛毛雨',61:'小雨',63:'中雨',65:'大雨',66:'冻雨',67:'强冻雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'小阵雨',81:'中阵雨',82:'强阵雨',85:'小阵雪',86:'强阵雪',95:'雷阵雨',96:'雷阵雨伴冰雹',99:'强雷雨伴冰雹'};
   return m[code] || '多云';
