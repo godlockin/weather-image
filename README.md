@@ -48,9 +48,22 @@ TOKEN=your_plain_token
 
 3) 启动本地服务
 ```bash
+# 推荐：使用 npm 脚本（自动加载环境变量）
+npm run dev
+
+# 或直接使用 wrangler
 npx wrangler dev --local
 ```
 启动成功后访问：http://localhost:8787/
+
+4) 测试 API 端点
+```bash
+# 批量测试城市 API
+npm run test:cities
+
+# 自定义测试参数
+BASE_URL=http://localhost:8787 TOKEN=your_token npm run test:cities
+```
 
 ## 使用说明
 - 页面输入“访问口令”和城市名称后点击“生成”即可

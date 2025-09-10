@@ -26,7 +26,12 @@ npm-debug.log*
 yarn-error.log*
 
 .last_summary
+
+# Test 
+city-testers.mjs
+cities_cn.txt
+cities_world.txt
+reports/city-test-*.csv
+
 CLAUDE.md
 CODEBUDDY.md
-cities*
-city*

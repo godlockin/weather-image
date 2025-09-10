@@ -4,8 +4,8 @@
   "description": "Cloudflare Pages weather image generator",
   "main": "src/index.js",
   "scripts": {
-    "dev": "dotenv -e .env -- wrangler pages dev . --binding IPSTACK_API_KEY=$IPSTACK_API_KEY --binding GEMINI_API_KEY=$GEMINI_API_KEY",
-    "dev:worker": "dotenv -e .env -- wrangler dev --local --binding IPSTACK_API_KEY=$IPSTACK_API_KEY --binding GEMINI_API_KEY=$GEMINI_API_KEY",
+    "dev": "dotenv -e .env -- wrangler pages dev . --binding GEMINI_API_KEY=$GEMINI_API_KEY",
+    "dev:worker": "dotenv -e .env -- wrangler dev --local --binding GEMINI_API_KEY=$GEMINI_API_KEY",
     "build": "echo 'No build step needed for static site'",
     "deploy": "wrangler pages deploy . --project-name=weather-image-gen",
     "test:cities": "node scripts/city-tester.mjs"
