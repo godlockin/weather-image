@@ -25,7 +25,7 @@ const CONFIG = {
   },
   IMAGE: {
     WIDTH: 1280,
-    HEIGHT: 720,
+    HEIGHT: 900,
     HEADER_HEIGHT: 88
   }
 };
@@ -512,6 +512,18 @@ function generateStyles() {
     }
     .res.active {
       display: block;
+    }
+    /* 自适应：根据视口高度柔性设置展示区域高度 */
+    .res {
+      min-height: clamp(420px, 64vh, 900px);
+    }
+    #img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    @media (max-width: 768px) {
+      .res { min-height: clamp(360px, 58vh, 720px); }
     }
     .meta {
       color: #666;
