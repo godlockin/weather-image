@@ -2,6 +2,16 @@
 
 一个部署在 Cloudflare（Workers/Pages）的极简应用：输入城市，自动获取天气摘要并生成等距微缩模型风格的图像。项目采用单文件 `_worker.js` 同时提供前端页面与 `/api/weather` API。
 
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/5b146a48-16d1-4b82-8de5-c22a7212d200" />
+
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/ebf0a018-cb67-4721-b537-3c1e23b889a1" />
+
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/67f3717c-0c23-4463-a661-6a14d7533215" />
+
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/79d03bee-5168-4b19-840d-f58892c14f87" />
+
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/ecf9683f-3dce-49ad-991d-d23962372a8f" />
+
 ## 功能特性
 - 一体化架构：单个 `_worker.js` 同时服务静态页面与 API
 - Gemini 模型：文本模型生成天气摘要，图像模型生成城市微缩模型图
