@@ -4,10 +4,6 @@
 
 // --- Configuration & Constants ---
 const CONFIG = {
-  ADSENSE: {
-    DEFAULT_CLIENT_ID: 'ca-pub-7369080645100200',
-    SELLER_ACCOUNT_ID: 'f08c47fec0942fa0'
-  },
   CACHE: {
     WEATHER_TTL: 60 * 60 * 1000, // 60 minutes
     LANDMARK_TTL: 24 * 60 * 60 * 1000, // 24 hours
@@ -37,45 +33,45 @@ class MemoryCache {
     this.maxSize = maxSize;
     this.stats = { hits: 0, misses: 0, evictions: 0 };
   }
-  
+
   get(key) {
     const item = this.cache.get(key);
     if (!item) {
       this.stats.misses++;
       return null;
     }
-    
+
     if (Date.now() > item.expiresAt) {
       this.cache.delete(key);
       this.stats.misses++;
       return null;
     }
-    
+
     // LRU: move to end
     this.cache.delete(key);
     this.cache.set(key, item);
     this.stats.hits++;
     return item.value;
   }
-  
+
   set(key, value, ttl) {
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
       this.stats.evictions++;
     }
-    
+
     this.cache.set(key, {
       value,
       expiresAt: Date.now() + ttl
     });
   }
-  
+
   clear() {
     this.cache.clear();
     this.stats = { hits: 0, misses: 0, evictions: 0 };
   }
-  
+
   cleanup() {
     const now = Date.now();
     let cleaned = 0;
@@ -87,7 +83,7 @@ class MemoryCache {
     }
     return cleaned;
   }
-  
+
   getStats() {
     return {
       ...this.stats,
@@ -109,7 +105,7 @@ const landmarkCache = new MemoryCache(CONFIG.CACHE.MAX_SIZE);
 async function handleApiRequest(request, env) {
   const url = new URL(request.url);
   const city = validateCityName(url.searchParams.get('city') || '上海');
-  
+
   // 步骤 1: 获取精准、结构化的实时天气数据（带缓存）
   const weatherData = await getRealtimeWeatherWithCache(city);
   if (!weatherData) {
@@ -132,7 +128,7 @@ async function handleApiRequest(request, env) {
 
     // 步骤 3: 构建纯图像生成Prompt (责任单一)
     const imagePrompt = buildImagePromptStrict(city, enHeader, landmarks.join(', '));
-    
+
     // 步骤 4: 调用图像模型生成纯图像 (无文字)
     const pngDataUri = await generateImageFromLLM(imagePrompt, apiKey, env.IMAGE_MODEL);
 
@@ -207,39 +203,38 @@ Provide the JSON array for "${city}".`;
     const landmarks = JSON.parse(cleanedText);
     return Array.isArray(landmarks) && landmarks.length > 0 ? landmarks : [`Iconic landmark of ${city}`];
   } catch (e) {
-    console.warn(`Landmark LLM failed for "${city}", falling back. Error:`, e);
-    return [`Iconic landmark of ${city}`]; // 提供稳健的回退
+    // Silently fallback on error
+    return [`Iconic landmark of ${city}`];
   }
 }
 
 /**
  * [重构] 图像生成客户端
  */
-async function generateImageFromLLM(prompt, apiKey, modelName = 'gemini-1.5-flash-image-preview') {
-    const model = modelName;
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const body = {
-      contents: [{ role:'user', parts:[{ text: prompt }]}]
-    };
-    const r = await fetch(endpoint, {
-      method:'POST',
-      headers:{ 'content-type':'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(body)
-    });
-  
-    if(!r.ok){
-      const errText = await r.text().catch(()=> '');
-      throw new Error(`Image API ${r.status} ${errText}`);
-    }
-    const j = await r.json();
-    const parts = j?.candidates?.[0]?.content?.parts || [];
-    const imgPart = parts.find(p=>p.inlineData && p.inlineData.data);
-    const data = imgPart?.inlineData?.data;
-    if(!data){
-      console.log('generateImageFromLLM: no inlineData in parts', JSON.stringify(j).slice(0, 500));
-      throw new Error('no_inline_image_data');
-    }
-    return 'data:image/png;base64,' + data;
+async function generateImageFromLLM(prompt, apiKey, modelName = 'gemini-3-pro-image-preview') {
+  const model = modelName;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }]
+  };
+  const r = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify(body)
+  });
+
+  if (!r.ok) {
+    const errText = await r.text().catch(() => '');
+    throw new Error(`Image API ${r.status} ${errText}`);
+  }
+  const j = await r.json();
+  const parts = j?.candidates?.[0]?.content?.parts || [];
+  const imgPart = parts.find(p => p.inlineData && p.inlineData.data);
+  const data = imgPart?.inlineData?.data;
+  if (!data) {
+    throw new Error('no_inline_image_data');
+  }
+  return 'data:image/png;base64,' + data;
 }
 
 /**
@@ -268,8 +263,8 @@ async function getRealtimeWeather(city) {
 
     // Generate text descriptions
     const zhWeather = weatherCodeText(weatherCode);
-    const zhLine = (typeof currentTemp === 'number' && zhWeather) 
-      ? `${name || city} ${zhWeather}，${Math.round(currentTemp)}°C` 
+    const zhLine = (typeof currentTemp === 'number' && zhWeather)
+      ? `${name || city} ${zhWeather}，${Math.round(currentTemp)}°C`
       : null;
 
     const enWeather = weatherCodeTextEn(weatherCode);
@@ -285,17 +280,17 @@ async function getRealtimeWeather(city) {
       enHeader = `${enWeather}, ${icon}`;
     }
 
-    return { 
-      zhLine, 
-      enHeader, 
-      code: weatherCode, 
-      name, 
-      tCur: currentTemp, 
-      tMax: maxTemp, 
-      tMin: minTemp 
+    return {
+      zhLine,
+      enHeader,
+      code: weatherCode,
+      name,
+      tCur: currentTemp,
+      tMax: maxTemp,
+      tMin: minTemp
     };
 
-  } catch (error) { 
+  } catch (error) {
     console.error('getRealtimeWeather failed:', city, error);
     return null;
   }
@@ -310,8 +305,8 @@ async function getRealtimeWeather(city) {
  * [重构] 图像生成Prompt (移除所有关于文字渲染的指令)
  */
 function buildImagePromptStrict(city, enHeader, landmarksZh) {
-  const weatherEffect = (enHeader||'').split(',')[0].trim();
-  const lm = (landmarksZh||'').trim();
+  const weatherEffect = (enHeader || '').split(',')[0].trim();
+  const lm = (landmarksZh || '').trim();
   return `An isometric diorama of ${city}, featuring its iconic landmarks: ${lm}.
 The scene is presented as a beautifully crafted, detailed miniature model.
 The lighting and atmosphere realistically match the day's weather: ${weatherEffect}.
@@ -351,7 +346,7 @@ function wrapWithHeaderSVG(pngDataUri, enHeader, city) {
   const { WIDTH: w, HEIGHT: h } = CONFIG.IMAGE;
   const title = `${city}: ${enHeader}`;
   const fontSize = calculateFontSize(title);
-  
+
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>
     <defs>
       <filter id='textOutline' x='-2%' y='-2%' width='104%' height='104%'>
@@ -383,7 +378,7 @@ function wrapWithHeaderSVG(pngDataUri, enHeader, city) {
     <image x='0' y='0' width='${w}' height='${h}' preserveAspectRatio='xMidYMid slice' href='${escapeXml(pngDataUri)}'/>
     <text x='50%' y='70' class='title'>${escapeXml(title)}</text>
   </svg>`;
-  
+
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
@@ -395,7 +390,7 @@ function svgImageStrict(city, enHeader) {
   const fg = '#333';
   const accent = '#667eea';
   const bodyY = headH + 40;
-  
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
     <defs>
       <linearGradient id="g" x1="0" x2="1">
@@ -410,7 +405,7 @@ function svgImageStrict(city, enHeader) {
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial" 
           font-size="28" font-weight="600">${escapeXml(enHeader || 'Weather')}</text>
     
-    <rect x="40" y="${bodyY}" rx="18" ry="18" width="${w-80}" height="${h-headH-80}" 
+    <rect x="40" y="${bodyY}" rx="18" ry="18" width="${w - 80}" height="${h - headH - 80}" 
           fill="url(#g)" stroke="#e5e7ff"/>
     
     <g transform="translate(180, ${bodyY + 160})">
@@ -431,7 +426,7 @@ function svgImageStrict(city, enHeader) {
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial" 
           font-size="24">Image generation failed. This is a fallback.</text>
   </svg>`;
-  
+
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
@@ -559,19 +554,6 @@ function generateStyles() {
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    .ads-floating {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      z-index: 100;
-      opacity: 0.98;
-    }
-    @media (max-width: 420px) {
-      .ads-floating ins {
-        width: 280px !important;
-        height: 50px !important;
-      }
-    }
   `;
 }
 
@@ -648,15 +630,8 @@ function generateJavaScript() {
 /**
  * [优化] HTML主体结构生成器
  */
-function generateHTMLBody(adsClient, adsenseEnabled) {
-  const headAdsScript = adsenseEnabled 
-    ? `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsClient}" crossorigin="anonymous"><\/script>` 
-    : '';
-    
-  const bodyFloatingAd = adsenseEnabled 
-    ? `<div class="ads-floating"><ins class="adsbygoogle" style="display:inline-block;width:320px;height:50px" data-ad-client="${adsClient}" data-ad-slot="1233673426"></ins><script>(adsbygoogle=window.adsbygoogle||[]).push({});<\/script></div>` 
-    : '';
-  
+function generateHTMLBody() {
+
   return `
     <div class="card">
       <h1>🌤️ 天气图像生成器</h1>
@@ -684,7 +659,6 @@ function generateHTMLBody(adsClient, adsenseEnabled) {
       <div class="spinner"></div>
     </div>
     
-    ${bodyFloatingAd}
   `;
 }
 
@@ -692,20 +666,17 @@ function generateHTMLBody(adsClient, adsenseEnabled) {
  * [保留] 用于渲染前端界面的HTML函数（重构版）
  */
 function renderIndexHtml(env) {
-  const adsenseEnabled = String(env.ADSENSE_ENABLED || '').toLowerCase() === 'true';
-  const adsClient = getAdsClientId(env);
-  
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>天气图像生成器</title>
-  ${adsenseEnabled ? `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsClient}" crossorigin="anonymous"></script>` : ''}
   <style>${generateStyles()}</style>
 </head>
 <body>
-  ${generateHTMLBody(adsClient, adsenseEnabled)}
+  ${generateHTMLBody()}
   <script>${generateJavaScript()}</script>
 </body>
 </html>`;
@@ -717,29 +688,12 @@ function renderIndexHtml(env) {
 // 职责：提供通用能力，如网络、认证、限流、数据转换等。
 // ===================================================================================
 
-// --- AdSense Helpers (优化版) ---
-function getAdsClientId(env) {
-  return (env.ADSENSE_CLIENT_ID || CONFIG.ADSENSE.DEFAULT_CLIENT_ID).trim();
-}
-
-function getAdsPubId(env) {
-  const explicit = (env.ADSENSE_PUB_ID || '').trim();
-  if (explicit) return explicit.startsWith('pub-') ? explicit : `pub-${explicit}`;
-  
-  const client = getAdsClientId(env);
-  const pubMatch = client.match(/(?:^|-)pub-(\d+)$/);
-  if (pubMatch) return `pub-${pubMatch[1]}`;
-  
-  const fallbackMatch = client.match(/(\d{10,})$/);
-  return fallbackMatch ? `pub-${fallbackMatch[1]}` : 'pub-0000000000000000';
-}
-
 // --- Network Helper (已优化，见下文) --
 
 // --- Security Helpers ---
 let AUTH_READY = false;
 let EXPECTED_TOKEN_HASH = null;
-async function ensureAuth(env){
+async function ensureAuth(env) {
   if (AUTH_READY) return;
   const hashed = (env.TOKEN_HASH || env.TOKEN_SHA256 || '').trim();
   if (hashed) {
@@ -752,20 +706,20 @@ async function ensureAuth(env){
   AUTH_READY = true;
 }
 
-async function isAuthorized(request, env){
-    const providedHeader = request.headers.get('x-access-token') || (request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
-    if(!providedHeader || !EXPECTED_TOKEN_HASH){
-        return false;
-    }
-    const digestCalc = (await sha256Hex(providedHeader)).toLowerCase();
-    return timingSafeEqual(digestCalc, EXPECTED_TOKEN_HASH);
+async function isAuthorized(request, env) {
+  const providedHeader = request.headers.get('x-access-token') || (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!providedHeader || !EXPECTED_TOKEN_HASH) {
+    return false;
+  }
+  const digestCalc = (await sha256Hex(providedHeader)).toLowerCase();
+  return timingSafeEqual(digestCalc, EXPECTED_TOKEN_HASH);
 }
 
-function timingSafeEqual(a,b){
-  if(typeof a!== 'string' || typeof b!== 'string') return false;
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
   const len = Math.max(a.length, b.length);
   let out = 0;
-  for(let i=0;i<len;i++){
+  for (let i = 0; i < len; i++) {
     const ca = a.charCodeAt(i) || 0;
     const cb = b.charCodeAt(i) || 0;
     out |= (ca ^ cb);
@@ -773,10 +727,10 @@ function timingSafeEqual(a,b){
   return a.length === b.length && out === 0;
 }
 
-async function sha256Hex(str){
+async function sha256Hex(str) {
   const enc = new TextEncoder();
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(str));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // --- Rate Limiting Helper (优化版) ---
@@ -786,7 +740,7 @@ let rateLimitCleanupScheduled = false;
 function scheduleRateLimitCleanup() {
   if (rateLimitCleanupScheduled) return;
   rateLimitCleanupScheduled = true;
-  
+
   setInterval(() => {
     const now = Date.now();
     let deleted = 0;
@@ -796,27 +750,24 @@ function scheduleRateLimitCleanup() {
         deleted++;
       }
     }
-    if (deleted > 0) {
-      console.log(`Rate limit cleanup: removed ${deleted} expired entries`);
-    }
   }, CONFIG.RATE_LIMIT.CLEANUP_INTERVAL);
 }
 
 function checkRateLimit(request, env) {
   // Initialize cleanup on first call
   scheduleRateLimitCleanup();
-  
+
   const windowMs = parseInt(env.RATE_LIMIT_WINDOW_MS || CONFIG.RATE_LIMIT.WINDOW_MS, 10);
   const maxReq = parseInt(env.RATE_LIMIT_MAX || CONFIG.RATE_LIMIT.MAX_REQUESTS, 10);
   const ip = getClientIp(request);
   const now = Date.now();
-  
+
   let entry = rateLimitStore.get(ip);
   if (!entry || now > entry.resetAt) {
     entry = { count: 0, resetAt: now + windowMs };
     rateLimitStore.set(ip, entry);
   }
-  
+
   entry.count++;
   return entry.count > maxReq;
 }
@@ -826,13 +777,13 @@ function checkRateLimit(request, env) {
  */
 function validateCityName(city) {
   if (!city || typeof city !== 'string') return '上海';
-  
+
   // Remove potentially dangerous characters
   const cleaned = city
     .trim()
     .replace(/[<>\"'&]/g, '')
     .slice(0, 50); // Limit length
-    
+
   return cleaned || '上海';
 }
 
@@ -860,16 +811,16 @@ async function fetchWithRetry(url, options = {}, retries = CONFIG.NETWORK.RETRIE
 }
 
 // --- General Helpers ---
-function getClientIp(request){
+function getClientIp(request) {
   return (request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
 }
 
 // 新增：更稳健的地理编码函数，支持中文直辖市与多候选筛选
-function isChinese(str){
+function isChinese(str) {
   return /[\u4e00-\u9fa5]/.test(str);
 }
 
-function buildGeoQueryCandidates(city){
+function buildGeoQueryCandidates(city) {
   const c = (city || '').trim();
   const candidates = new Set();
   if (!c) return [];
@@ -894,7 +845,7 @@ function buildGeoQueryCandidates(city){
     '上海': 'Shanghai', '上海市': 'Shanghai',
     '天津': 'Tianjin', '天津市': 'Tianjin',
     '重庆': 'Chongqing', '重庆市': 'Chongqing',
-    
+
     // 安徽省 (Anhui Province)
     '合肥': 'Hefei', '合肥市': 'Hefei',
     '安庆': 'Anqing', '安庆市': 'Anqing',
@@ -912,7 +863,7 @@ function buildGeoQueryCandidates(city){
     '铜陵': 'Tongling', '铜陵市': 'Tongling',
     '芜湖': 'Wuhu', '芜湖市': 'Wuhu',
     '宣城': 'Xuancheng', '宣城市': 'Xuancheng',
-    
+
     // 福建省 (Fujian Province)
     '福州': 'Fuzhou', '福州市': 'Fuzhou',
     '厦门': 'Xiamen', '厦门市': 'Xiamen',
@@ -923,7 +874,7 @@ function buildGeoQueryCandidates(city){
     '泉州': 'Quanzhou', '泉州市': 'Quanzhou',
     '三明': 'Sanming', '三明市': 'Sanming',
     '漳州': 'Zhangzhou', '漳州市': 'Zhangzhou',
-    
+
     // 甘肃省 (Gansu Province)
     '酒泉': 'Jiuquan', '酒泉市': 'Jiuquan',
     '嘉峪关': 'Jiayuguan', '嘉峪关市': 'Jiayuguan',
@@ -937,7 +888,7 @@ function buildGeoQueryCandidates(city){
     '天水': 'Tianshui', '天水市': 'Tianshui',
     '平凉': 'Pingliang', '平凉市': 'Pingliang',
     '庆阳': 'Qingyang', '庆阳市': 'Qingyang',
-    
+
     // 广东省 (Guangdong Province)
     '广州': 'Guangzhou', '广州市': 'Guangzhou',
     '深圳': 'Shenzhen', '深圳市': 'Shenzhen',
@@ -959,7 +910,7 @@ function buildGeoQueryCandidates(city){
     '江门': 'Jiangmen', '江门市': 'Jiangmen',
     '云浮': 'Yunfu', '云浮市': 'Yunfu',
     '揭阳': 'Jieyang', '揭阳市': 'Jieyang',
-    
+
     // 广西壮族自治区 (Guangxi Zhuang Autonomous Region)
     '南宁': 'Nanning', '南宁市': 'Nanning',
     '柳州': 'Liuzhou', '柳州市': 'Liuzhou',
@@ -975,7 +926,7 @@ function buildGeoQueryCandidates(city){
     '河池': 'Hechi', '河池市': 'Hechi',
     '来宾': 'Laibin', '来宾市': 'Laibin',
     '崇左': 'Chongzuo', '崇左市': 'Chongzuo',
-    
+
     // 贵州省 (Guizhou Province)
     '贵阳': 'Guiyang', '贵阳市': 'Guiyang',
     '六盘水': 'Liupanshui', '六盘水市': 'Liupanshui',
@@ -983,13 +934,13 @@ function buildGeoQueryCandidates(city){
     '安顺': 'Anshun', '安顺市': 'Anshun',
     '毕节': 'Bijie', '毕节市': 'Bijie',
     '铜仁': 'Tongren', '铜仁市': 'Tongren',
-    
+
     // 海南省 (Hainan Province)
     '海口': 'Haikou', '海口市': 'Haikou',
     '三亚': 'Sanya', '三亚市': 'Sanya',
     '儋州': 'Danzhou', '儋州市': 'Danzhou',
     '三沙': 'Sansha', '三沙市': 'Sansha',
-    
+
     // 河北省 (Hebei Province)
     '石家庄': 'Shijiazhuang', '石家庄市': 'Shijiazhuang',
     '唐山': 'Tangshan', '唐山市': 'Tangshan',
@@ -1002,7 +953,7 @@ function buildGeoQueryCandidates(city){
     '沧州': 'Cangzhou', '沧州市': 'Cangzhou',
     '廊坊': 'Langfang', '廊坊市': 'Langfang',
     '衡水': 'Hengshui', '衡水市': 'Hengshui',
-    
+
     // 黑龙江省 (Heilongjiang Province)
     '哈尔滨': 'Harbin', '哈尔滨市': 'Harbin',
     '齐齐哈尔': 'Qiqihar', '齐齐哈尔市': 'Qiqihar',
@@ -1015,7 +966,7 @@ function buildGeoQueryCandidates(city){
     '伊春': 'Yichun', '伊春市': 'Yichun',
     '黑河': 'Heihe', '黑河市': 'Heihe',
     '绥化': 'Suihua', '绥化市': 'Suihua',
-    
+
     // 河南省 (Henan Province)
     '郑州': 'Zhengzhou', '郑州市': 'Zhengzhou',
     '开封': 'Kaifeng', '开封市': 'Kaifeng',
@@ -1034,7 +985,7 @@ function buildGeoQueryCandidates(city){
     '信阳': 'Xinyang', '信阳市': 'Xinyang',
     '周口': 'Zhoukou', '周口市': 'Zhoukou',
     '驻马店': 'Zhumadian', '驻马店市': 'Zhumadian',
-    
+
     // 湖北省 (Hubei Province)
     '武汉': 'Wuhan', '武汉市': 'Wuhan',
     '黄石': 'Huangshi', '黄石市': 'Huangshi',
@@ -1048,7 +999,7 @@ function buildGeoQueryCandidates(city){
     '黄冈': 'Huanggang', '黄冈市': 'Huanggang',
     '咸宁': 'Xianning', '咸宁市': 'Xianning',
     '随州': 'Suizhou', '随州市': 'Suizhou',
-    
+
     // 湖南省 (Hunan Province)
     '长沙': 'Changsha', '长沙市': 'Changsha',
     '株洲': 'Zhuzhou', '株洲市': 'Zhuzhou',
@@ -1063,7 +1014,7 @@ function buildGeoQueryCandidates(city){
     '永州': 'Yongzhou', '永州市': 'Yongzhou',
     '怀化': 'Huaihua', '怀化市': 'Huaihua',
     '娄底': 'Loudi', '娄底市': 'Loudi',
-    
+
     // 内蒙古自治区 (Inner Mongolia Autonomous Region)
     '呼和浩特': 'Hohhot', '呼和浩特市': 'Hohhot',
     '包头': 'Baotou', '包头市': 'Baotou',
@@ -1074,7 +1025,7 @@ function buildGeoQueryCandidates(city){
     '巴彦淖尔': 'Bayannur', '巴彦淖尔市': 'Bayannur',
     '乌兰察布': 'Ulanqab', '乌兰察布市': 'Ulanqab',
     '乌海': 'Wuhai', '乌海市': 'Wuhai',
-    
+
     // 江苏省 (Jiangsu Province)
     '南京': 'Nanjing', '南京市': 'Nanjing',
     '无锡': 'Wuxi', '无锡市': 'Wuxi',
@@ -1089,7 +1040,7 @@ function buildGeoQueryCandidates(city){
     '镇江': 'Zhenjiang', '镇江市': 'Zhenjiang',
     '泰州': 'Taizhou', '泰州市': 'Taizhou',
     '宿迁': 'Suqian', '宿迁市': 'Suqian',
-    
+
     // 江西省 (Jiangxi Province)
     '南昌': 'Nanchang', '南昌市': 'Nanchang',
     '九江': 'Jiujiang', '九江市': 'Jiujiang',
@@ -1102,7 +1053,7 @@ function buildGeoQueryCandidates(city){
     '鹰潭': 'Yingtan', '鹰潭市': 'Yingtan',
     '景德镇': 'Jingdezhen', '景德镇市': 'Jingdezhen',
     '上饶': 'Shangrao', '上饶市': 'Shangrao',
-    
+
     // 吉林省 (Jilin Province)
     '长春': 'Changchun', '长春市': 'Changchun',
     '吉林': 'Jilin', '吉林市': 'Jilin',
@@ -1112,7 +1063,7 @@ function buildGeoQueryCandidates(city){
     '白山': 'Baishan', '白山市': 'Baishan',
     '白城': 'Baicheng', '白城市': 'Baicheng',
     '松原': 'Songyuan', '松原市': 'Songyuan',
-    
+
     // 辽宁省 (Liaoning Province)
     '沈阳': 'Shenyang', '沈阳市': 'Shenyang',
     '大连': 'Dalian', '大连市': 'Dalian',
@@ -1133,7 +1084,7 @@ function buildGeoQueryCandidates(city){
     '湛江': 'Zhanjiang', '湛江市': 'Zhanjiang',
     '兰州': 'Lanzhou', '兰州市': 'Lanzhou',
     '西宁': 'Xining', '西宁市': 'Xining',
-    
+
     // === 中国四线城市 (Tier 4) - 重要地级市 ===
     '安阳': 'Anyang', '安阳市': 'Anyang',
     '鞍山': 'Anshan', '鞍山市': 'Anshan',
@@ -1201,7 +1152,7 @@ function buildGeoQueryCandidates(city){
     '肇庆': 'Zhaoqing', '肇庆市': 'Zhaoqing',
     '株洲': 'Zhuzhou', '株洲市': 'Zhuzhou',
     '舟山': 'Zhoushan', '舟山市': 'Zhoushan',
-    
+
     // === 中国五线城市 (Tier 5) - 重要县级市和地级市 ===
     '阿克苏': 'Aksu', '阿克苏市': 'Aksu',
     '安康': 'Ankang', '安康市': 'Ankang',
@@ -1347,18 +1298,18 @@ function buildGeoQueryCandidates(city){
     '淄博': 'Zibo', '淄博市': 'Zibo',
     '自贡': 'Zigong', '自贡市': 'Zigong',
     '遵义': 'Zunyi', '遵义市': 'Zunyi',
-    
+
     // 宁夏回族自治区 (Ningxia Hui Autonomous Region)
     '银川': 'Yinchuan', '银川市': 'Yinchuan',
     '石嘴山': 'Shizuishan', '石嘴山市': 'Shizuishan',
     '吴忠': 'Wuzhong', '吴忠市': 'Wuzhong',
     '固原': 'Guyuan', '固原市': 'Guyuan',
     '中卫': 'Zhongwei', '中卫市': 'Zhongwei',
-    
+
     // 青海省 (Qinghai Province)
     '西宁': 'Xining', '西宁市': 'Xining',
     '海东': 'Haidong', '海东市': 'Haidong',
-    
+
     // 陕西省 (Shaanxi Province)
     '西安': "Xi'an", '西安市': "Xi'an",
     '铜川': 'Tongchuan', '铜川市': 'Tongchuan',
@@ -1369,7 +1320,7 @@ function buildGeoQueryCandidates(city){
     '汉中': 'Hanzhong', '汉中市': 'Hanzhong',
     '安康': 'Ankang', '安康市': 'Ankang',
     '商洛': 'Shangluo', '商洛市': 'Shangluo',
-    
+
     // 山东省 (Shandong Province)
     '济南': 'Jinan', '济南市': 'Jinan',
     '青岛': 'Qingdao', '青岛市': 'Qingdao',
@@ -1387,7 +1338,7 @@ function buildGeoQueryCandidates(city){
     '聊城': 'Liaocheng', '聊城市': 'Liaocheng',
     '临沂': 'Linyi', '临沂市': 'Linyi',
     '菏泽': 'Heze', '菏泽市': 'Heze',
-    
+
     // 山西省 (Shanxi Province)
     '太原': 'Taiyuan', '太原市': 'Taiyuan',
     '大同': 'Datong', '大同市': 'Datong',
@@ -1400,7 +1351,7 @@ function buildGeoQueryCandidates(city){
     '忻州': 'Xinzhou', '忻州市': 'Xinzhou',
     '临汾': 'Linfen', '临汾市': 'Linfen',
     '吕梁': 'Lvliang', '吕梁市': 'Lvliang',
-    
+
     // 四川省 (Sichuan Province)
     '成都': 'Chengdu', '成都市': 'Chengdu',
     '自贡': 'Zigong', '自贡市': 'Zigong',
@@ -1420,7 +1371,7 @@ function buildGeoQueryCandidates(city){
     '雅安': 'Yaan', '雅安市': 'Yaan',
     '巴中': 'Bazhong', '巴中市': 'Bazhong',
     '资阳': 'Ziyang', '资阳市': 'Ziyang',
-    
+
     // 西藏自治区 (Tibet Autonomous Region)
     '拉萨': 'Lhasa', '拉萨市': 'Lhasa',
     '日喀则': 'Shigatse', '日喀则市': 'Shigatse',
@@ -1428,13 +1379,13 @@ function buildGeoQueryCandidates(city){
     '林芝': 'Nyingchi', '林芝市': 'Nyingchi',
     '山南': 'Shannan', '山南市': 'Shannan',
     '那曲': 'Nagqu', '那曲市': 'Nagqu',
-    
+
     // 新疆维吾尔自治区 (Xinjiang Uyghur Autonomous Region)
     '乌鲁木齐': 'Urumqi', '乌鲁木齐市': 'Urumqi',
     '克拉玛依': 'Karamay', '克拉玛依市': 'Karamay',
     '吐鲁番': 'Turpan', '吐鲁番市': 'Turpan',
     '哈密': 'Hami', '哈密市': 'Hami',
-    
+
     // 云南省 (Yunnan Province)
     '昆明': 'Kunming', '昆明市': 'Kunming',
     '曲靖': 'Qujing', '曲靖市': 'Qujing',
@@ -1444,7 +1395,7 @@ function buildGeoQueryCandidates(city){
     '丽江': 'Lijiang', '丽江市': 'Lijiang',
     '普洱': 'Puer', '普洱市': 'Puer',
     '临沧': 'Lincang', '临沧市': 'Lincang',
-    
+
     // 浙江省 (Zhejiang Province)
     '杭州': 'Hangzhou', '杭州市': 'Hangzhou',
     '宁波': 'Ningbo', '宁波市': 'Ningbo',
@@ -1457,16 +1408,16 @@ function buildGeoQueryCandidates(city){
     '舟山': 'Zhoushan', '舟山市': 'Zhoushan',
     '台州': 'Taizhou', '台州市': 'Taizhou',
     '丽水': 'Lishui', '丽水市': 'Lishui',
-    
+
     // 特殊地区和难命中的地名
     '墨脱': '墨脱县', '墨脱县': '墨脱县',
     'Motuo': 'Motuo', 'Medog': 'Medog',
-    
+
     // === 全球一线城市 (Alpha++ & Alpha+) ===
     // Alpha++
     'London': 'London', '伦敦': 'London',
     'New York': 'New York', '纽约': 'New York',
-    
+
     // Alpha+
     'Dubai': 'Dubai', '迪拜': 'Dubai',
     'Hong Kong': 'Hong Kong', '香港': 'Hong Kong',
@@ -1474,7 +1425,7 @@ function buildGeoQueryCandidates(city){
     'Singapore': 'Singapore', '新加坡': 'Singapore',
     'Sydney': 'Sydney', '悉尼': 'Sydney',
     'Tokyo': 'Tokyo', '东京': 'Tokyo',
-    
+
     // === 全球二线城市 (Alpha) ===
     'Amsterdam': 'Amsterdam', '阿姆斯特丹': 'Amsterdam',
     'Bangkok': 'Bangkok', '曼谷': 'Bangkok',
@@ -1493,7 +1444,7 @@ function buildGeoQueryCandidates(city){
     'Seoul': 'Seoul', '首尔': 'Seoul',
     'Toronto': 'Toronto', '多伦多': 'Toronto',
     'Warsaw': 'Warsaw', '华沙': 'Warsaw',
-    
+
     // === 全球三线城市 (Beta+) ===
     'Athens': 'Athens', '雅典': 'Athens',
     'Atlanta': 'Atlanta', '亚特兰大': 'Atlanta',
@@ -1515,7 +1466,7 @@ function buildGeoQueryCandidates(city){
     'Prague': 'Prague', '布拉格': 'Prague',
     'Rome': 'Rome', '罗马': 'Rome',
     'Tianjin': 'Tianjin', '天津': 'Tianjin',
-    
+
     // === 全球三线城市 (Beta) ===
     'Abu Dhabi': 'Abu Dhabi', '阿布扎比': 'Abu Dhabi',
     'Brisbane': 'Brisbane', '布里斯班': 'Brisbane',
@@ -1540,7 +1491,7 @@ function buildGeoQueryCandidates(city){
     'Wuhan': 'Wuhan', '武汉': 'Wuhan',
     'Xiamen': 'Xiamen', '厦门': 'Xiamen',
     'Zhengzhou': 'Zhengzhou', '郑州': 'Zhengzhou',
-    
+
     // === 全球三线城市 (Beta-) ===
     'Beirut': 'Beirut', '贝鲁特': 'Beirut',
     'Belgrade': 'Belgrade', '贝尔格莱德': 'Belgrade',
@@ -1570,7 +1521,7 @@ function buildGeoQueryCandidates(city){
     'Vancouver': 'Vancouver', '温哥华': 'Vancouver',
     "Xi'an": "Xi'an", '西安': "Xi'an",
     'Zagreb': 'Zagreb', '萨格勒布': 'Zagreb',
-    
+
     // === 其他重要国际城市 ===
     'Zurich': 'Zurich', '苏黎世': 'Zurich',
     'Brussels': 'Brussels', '布鲁塞尔': 'Brussels',
@@ -1606,7 +1557,7 @@ function buildGeoQueryCandidates(city){
   return arr.slice(0, 10);
 }
 
-async function geocodeCitySmart(city){
+async function geocodeCitySmart(city) {
   const baseQueries = buildGeoQueryCandidates(city);
   const preferCN = isChinese(city);
 
@@ -1641,50 +1592,50 @@ async function geocodeCitySmart(city){
     const best = pickBestLocation(city, arr, preferCN);
     if (best) return best;
   }
-  
+
   return null;
 }
 
-function pickBestLocation(originalCity, results, preferCN){
+function pickBestLocation(originalCity, results, preferCN) {
   if (!results || results.length === 0) return null;
   let arr = results.slice();
 
   // 优先精确名称匹配（含“市”变体）
-  const exactNames = new Set([originalCity, originalCity.replace(/[市]$/u,''), originalCity + '市']);
-  const exact = arr.find(x => exactNames.has(String(x.name||'')));
+  const exactNames = new Set([originalCity, originalCity.replace(/[市]$/u, ''), originalCity + '市']);
+  const exact = arr.find(x => exactNames.has(String(x.name || '')));
   if (exact) return exact;
 
   // 优先中国境内
   if (preferCN) {
-    const cnList = arr.filter(x => (x.country_code||'').toUpperCase() === 'CN');
+    const cnList = arr.filter(x => (x.country_code || '').toUpperCase() === 'CN');
     if (cnList.length) arr = cnList;
   }
 
   // 按人口倒序（大城市优先，如直辖市）
-  arr.sort((a,b)=> (b.population||0) - (a.population||0));
+  arr.sort((a, b) => (b.population || 0) - (a.population || 0));
   return arr[0] || null;
 }
 
-function weatherCodeText(code){
-  const m={0:'晴朗',1:'大致晴朗',2:'局部多云',3:'多云',45:'有雾',48:'沉积雾',51:'小毛毛雨',53:'中毛毛雨',55:'大毛毛雨',56:'小冻毛毛雨',57:'大冻毛毛雨',61:'小雨',63:'中雨',65:'大雨',66:'冻雨',67:'强冻雨',71:'小雪',73:'中雪',75:'大雪',77:'雪粒',80:'小阵雨',81:'中阵雨',82:'强阵雨',85:'小阵雪',86:'强阵雪',95:'雷阵雨',96:'雷阵雨伴冰雹',99:'强雷雨伴冰雹'};
+function weatherCodeText(code) {
+  const m = { 0: '晴朗', 1: '大致晴朗', 2: '局部多云', 3: '多云', 45: '有雾', 48: '沉积雾', 51: '小毛毛雨', 53: '中毛毛雨', 55: '大毛毛雨', 56: '小冻毛毛雨', 57: '大冻毛毛雨', 61: '小雨', 63: '中雨', 65: '大雨', 66: '冻雨', 67: '强冻雨', 71: '小雪', 73: '中雪', 75: '大雪', 77: '雪粒', 80: '小阵雨', 81: '中阵雨', 82: '强阵雨', 85: '小阵雪', 86: '强阵雪', 95: '雷阵雨', 96: '雷阵雨伴冰雹', 99: '强雷雨伴冰雹' };
   return m[code] || '多云';
 }
-function weatherCodeTextEn(code){
-  const m={0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Cloudy',45:'Fog',48:'Depositing rime fog',51:'Light drizzle',53:'Moderate drizzle',55:'Heavy drizzle',56:'Light freezing drizzle',57:'Heavy freezing drizzle',61:'Light rain',63:'Moderate rain',65:'Heavy rain',66:'Freezing rain',67:'Heavy freezing rain',71:'Light snow',73:'Moderate snow',75:'Heavy snow',77:'Snow grains',80:'Light showers',81:'Moderate showers',82:'Heavy showers',85:'Light snow showers',86:'Heavy snow showers',95:'Thunderstorm',96:'Thunderstorm with hail',99:'Severe thunderstorm with hail'};
+function weatherCodeTextEn(code) {
+  const m = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Cloudy', 45: 'Fog', 48: 'Depositing rime fog', 51: 'Light drizzle', 53: 'Moderate drizzle', 55: 'Heavy drizzle', 56: 'Light freezing drizzle', 57: 'Heavy freezing drizzle', 61: 'Light rain', 63: 'Moderate rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Heavy freezing rain', 71: 'Light snow', 73: 'Moderate snow', 75: 'Heavy snow', 77: 'Snow grains', 80: 'Light showers', 81: 'Moderate showers', 82: 'Heavy showers', 85: 'Light snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Severe thunderstorm with hail' };
   return m[code] || 'Cloudy';
 }
-function weatherCodeIcon(code){
-  if(code===0||code===1) return '☀️'; if(code===2) return '🌤️'; if(code===3) return '☁️'; if(code===45||code===48) return '🌫️'; if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return '🌧️'; if([71,73,75,77,85,86].includes(code)) return '🌨️'; if([95,96,99].includes(code)) return '⛈️';
+function weatherCodeIcon(code) {
+  if (code === 0 || code === 1) return '☀️'; if (code === 2) return '🌤️'; if (code === 3) return '☁️'; if (code === 45 || code === 48) return '🌫️'; if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '🌧️'; if ([71, 73, 75, 77, 85, 86].includes(code)) return '🌨️'; if ([95, 96, 99].includes(code)) return '⛈️';
   return '☁️';
 }
 function buildJsonResponse(body, status = 200, corsHeaders = {}) {
-    return new Response(JSON.stringify(body), {
-        status: status,
-        headers: { 
-          'content-type': 'application/json; charset=utf-8',
-          ...corsHeaders
-        }
-    });
+  return new Response(JSON.stringify(body), {
+    status: status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      ...corsHeaders
+    }
+  });
 }
 
 // ===================================================================================
@@ -1696,7 +1647,7 @@ export default {
     try {
       await ensureAuth(env);
       const url = new URL(request.url);
-      
+
       // Add CORS headers for all responses
       const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
@@ -1711,55 +1662,43 @@ export default {
       }
 
       // --- Public Routes ---
-      if (url.pathname === '/ads.txt') {
-        const pubId = getAdsPubId(env);
-        const content = `google.com, ${pubId}, DIRECT, ${CONFIG.ADSENSE.SELLER_ACCOUNT_ID}\n`;
-        return new Response(content, { 
-          headers: { 
-            'content-type': 'text/plain; charset=utf-8', 
-            'cache-control': 'public, max-age=3600',
-            ...corsHeaders 
-          } 
-        });
-      }
-
       // --- Health Check ---
       if (url.pathname === '/health') {
-        return new Response(JSON.stringify({ 
-          status: 'ok', 
+        return new Response(JSON.stringify({
+          status: 'ok',
           timestamp: Date.now(),
           cache: {
             weather: weatherCache.getStats(),
             landmarks: landmarkCache.getStats(),
             rateLimit: rateLimitStore.size
           }
-        }), { 
-          headers: { 
+        }), {
+          headers: {
             'content-type': 'application/json',
-            ...corsHeaders 
-          } 
+            ...corsHeaders
+          }
         });
       }
 
       // If TOKEN is not configured at all, deny access to all protected routes
       if (!EXPECTED_TOKEN_HASH) {
-        return new Response('Unauthorized: Application TOKEN is not configured.', { 
-          status: 401, 
-          headers: { 
+        return new Response('Unauthorized: Application TOKEN is not configured.', {
+          status: 401,
+          headers: {
             'content-type': 'text/plain; charset=utf-8',
-            ...corsHeaders 
+            ...corsHeaders
           }
         });
       }
 
       // --- UI Route ---
       if (url.pathname === '/') {
-        return new Response(renderIndexHtml(env), { 
-          headers: { 
+        return new Response(renderIndexHtml(env), {
+          headers: {
             'content-type': 'text/html; charset=utf-8',
             'cache-control': 'public, max-age=300',
-            ...corsHeaders 
-          } 
+            ...corsHeaders
+          }
         });
       }
 
@@ -1769,7 +1708,7 @@ export default {
         if (!(await isAuthorized(request, env))) {
           return buildJsonResponse({ success: false, error: 'Unauthorized' }, 401, corsHeaders);
         }
-        
+
         // Security Layer 2: Rate Limiting
         if (checkRateLimit(request, env)) {
           return buildJsonResponse({ success: false, error: 'Rate limit exceeded' }, 429, corsHeaders);
@@ -1789,14 +1728,14 @@ export default {
         }
       }
 
-      return new Response('Not Found', { 
-        status: 404, 
-        headers: { 
+      return new Response('Not Found', {
+        status: 404,
+        headers: {
           'content-type': 'text/plain',
-          ...corsHeaders 
-        } 
+          ...corsHeaders
+        }
       });
-      
+
     } catch (error) {
       console.error('Global error handler:', error);
       return new Response('Internal Server Error', { status: 500 });

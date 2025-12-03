@@ -8,12 +8,6 @@ name = "weather-image-gen"
 
 [[env.production.vars]]
 GEMINI_API_KEY = ""
-ADSENSE_ENABLED = "true"
-ADSENSE_CLIENT_ID = ""
-ADSENSE_PUB_ID = ""
 
 [vars]
 GEMINI_API_KEY = ""
-ADSENSE_ENABLED = "false"
-ADSENSE_CLIENT_ID = ""
-ADSENSE_PUB_ID = ""
