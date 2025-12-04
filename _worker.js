@@ -139,7 +139,6 @@ async function handleApiRequest(request, env) {
 
   } catch (e) {
     console.error(`[ERROR] Core logic failed for city "${city}":`, e.message);
-    console.error('[ERROR] Stack:', e.stack);
     // 任何步骤失败，都回退到带天气信息的SVG
     const fallbackSvg = svgImageStrict(city, enHeader);
     return buildJsonResponse({ success: true, city, weatherLine: zhLine, image: fallbackSvg, usedFallback: true, usedFallbackReason: e.message || 'llm_or_processing_error' });
@@ -154,7 +153,7 @@ async function handleApiRequest(request, env) {
 /**
  * [优化] 带缓存的LLM地标获取
  */
-async function getLandmarksFromLLMWithCache(city, apiKey, modelName = 'gemini-1.5-flash') {
+async function getLandmarksFromLLMWithCache(city, apiKey, modelName = 'gemini-flash-latest') {
   const cacheKey = `landmarks:${city}:${modelName}`;
   const cached = landmarkCache.get(cacheKey);
   if (cached) return cached;
@@ -182,7 +181,7 @@ async function getRealtimeWeatherWithCache(city) {
 /**
  * [重构] 调用LLM，以获取结构化的地标列表
  */
-async function getLandmarksFromLLM(city, apiKey, modelName = 'gemini-1.5-flash') {
+async function getLandmarksFromLLM(city, apiKey, modelName = 'gemini-flash-latest') {
   const prompt = `You are a helpful assistant. Your task is to identify 1-2 iconic, visually distinct landmarks for the city "${city}".
 RULES:
 1. Return ONLY a single, valid JSON array of strings.
@@ -210,32 +209,55 @@ Provide the JSON array for "${city}".`;
 }
 
 /**
- * [重构] 图像生成客户端
+ * [重构] 图像生成客户端 - 添加超时保护
  */
-async function generateImageFromLLM(prompt, apiKey, modelName = 'gemini-3-pro-image-preview') {
-  const model = modelName;
+async function generateImageFromLLM(prompt, apiKey, modelName = 'gemini-2.5-flash-image') {
+  const model = modelName || 'gemini-2.5-flash-image';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }]
   };
-  const r = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(body)
-  });
 
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`Image API ${r.status} ${errText}`);
+  // 添加25秒超时保护（Cloudflare环境）
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      console.error(`[ERROR] Image API ${r.status}:`, errText.substring(0, 200));
+      throw new Error(`Image API ${r.status}`);
+    }
+
+    const j = await r.json();
+    const parts = j?.candidates?.[0]?.content?.parts || [];
+    const imgPart = parts.find(p => p.inlineData && p.inlineData.data);
+    const data = imgPart?.inlineData?.data;
+
+    if (!data) {
+      console.error('[ERROR] No image data in response from model:', model);
+      throw new Error('no_inline_image_data');
+    }
+
+    return 'data:image/png;base64,' + data;
+
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') {
+      console.error('[ERROR] Image generation timeout after 25s');
+      throw new Error('image_generation_timeout');
+    }
+    throw e;
   }
-  const j = await r.json();
-  const parts = j?.candidates?.[0]?.content?.parts || [];
-  const imgPart = parts.find(p => p.inlineData && p.inlineData.data);
-  const data = imgPart?.inlineData?.data;
-  if (!data) {
-    throw new Error('no_inline_image_data');
-  }
-  return 'data:image/png;base64,' + data;
 }
 
 /**
@@ -789,9 +811,9 @@ function validateCityName(city) {
 }
 
 /**
- * [优化] 网络请求优化，使用配置常量
+ * [优化] 网络请求优化，使用配置常量（Cloudflare优化版）
  */
-async function fetchWithRetry(url, options = {}, retries = CONFIG.NETWORK.RETRIES, timeoutMs = CONFIG.NETWORK.TIMEOUT) {
+async function fetchWithRetry(url, options = {}, retries = 2, timeoutMs = 10000) {
   let lastErr;
   for (let i = 0; i <= retries; i++) {
     const ctrl = new AbortController();
