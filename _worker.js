@@ -138,7 +138,8 @@ async function handleApiRequest(request, env) {
     return buildJsonResponse({ success: true, city, weatherLine: zhLine, image: finalImage });
 
   } catch (e) {
-    console.error(`Core logic failed for city "${city}":`, e);
+    console.error(`[ERROR] Core logic failed for city "${city}":`, e.message);
+    console.error('[ERROR] Stack:', e.stack);
     // 任何步骤失败，都回退到带天气信息的SVG
     const fallbackSvg = svgImageStrict(city, enHeader);
     return buildJsonResponse({ success: true, city, weatherLine: zhLine, image: fallbackSvg, usedFallback: true, usedFallbackReason: e.message || 'llm_or_processing_error' });
